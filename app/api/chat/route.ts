@@ -70,13 +70,33 @@ When using edit_diagram tool:
   * The error message will indicate how many retries remain
 `;
 
+    // Debug: Check message structure and history
+    console.log("Total messages in history:", messages.length);
+    console.log("Message roles:", messages.map(m => ({ role: m.role, hasParts: !!m.parts, partsCount: m.parts?.length || 0 })));
+
     const lastMessage = messages[messages.length - 1];
 
-    // Extract text from the last message parts
-    const lastMessageText = lastMessage.parts?.find((part: any) => part.type === 'text')?.text || '';
+    // Extract text from the last message parts (handle different message formats)
+    let lastMessageText = '';
+    let fileParts: any[] = [];
 
-    // Extract file parts (images) from the last message
-    const fileParts = lastMessage.parts?.filter((part: any) => part.type === 'file') || [];
+    if (lastMessage.parts && Array.isArray(lastMessage.parts)) {
+      // New format with parts
+      lastMessageText = lastMessage.parts.find((part: any) => part.type === 'text')?.text || '';
+      fileParts = lastMessage.parts.filter((part: any) => part.type === 'file') || [];
+    } else if (typeof lastMessage.content === 'string') {
+      // Simple text format
+      lastMessageText = lastMessage.content;
+      fileParts = [];
+    } else if (Array.isArray(lastMessage.content)) {
+      // Array format (from some AI SDK versions)
+      const textPart = lastMessage.content.find((part: any) => part.type === 'text');
+      lastMessageText = textPart?.text || '';
+      fileParts = lastMessage.content.filter((part: any) => part.type === 'file') || [];
+    }
+
+    console.log("Extracted text:", lastMessageText);
+    console.log("Extracted file parts count:", fileParts.length);
 
     const formattedTextContent = `
 Current diagram XML:
@@ -87,6 +107,10 @@ User input:
 """md
 ${lastMessageText}
 """`;
+
+    console.log("Formatted text content length:", formattedTextContent.length);
+    console.log("XML content length:", (xml || '').length);
+    console.log("XML content preview:", (xml || '').substring(0, 200));
 
     // Convert UIMessages to ModelMessages and add system message
     const modelMessages = convertToModelMessages(messages);
@@ -117,16 +141,74 @@ ${lastMessageText}
       }
     }
 
-    console.log("Enhanced messages:", enhancedMessages);
+    console.log("Original messages:", JSON.stringify(messages, null, 2));
+    console.log("Last message:", JSON.stringify(lastMessage, null, 2));
+    console.log("Enhanced messages:", JSON.stringify(enhancedMessages, null, 2));
 
     // Get AI model from environment configuration
     const { model, providerOptions } = getAIModel();
+
+    // Check if using ModelScope/ZhipuAI which may have compatibility issues
+    const isModelScope = process.env.OPENAI_BASE_URL?.includes('modelscope') ||
+                        process.env.AI_MODEL?.includes('ZhipuAI') ||
+                        process.env.AI_MODEL?.includes('GLM');
+
+    // For ModelScope/ZhipuAI, handle compatibility issues
+    if (isModelScope) {
+      console.log('[ModelScope] Applying compatibility fixes');
+
+      // Fix 1: Filter out image content to avoid parameter errors
+      if (fileParts.length > 0) {
+        console.log('[ModelScope] Filtering out image content');
+        enhancedMessages = enhancedMessages.map(msg => {
+          if (msg.role === 'user' && Array.isArray(msg.content)) {
+            const textParts = msg.content.filter(part => part.type === 'text');
+            if (textParts.length > 0) {
+              return {
+                ...msg,
+                content: textParts.map(part => part.text).join('\n')
+              };
+            }
+          }
+          return msg;
+        });
+      }
+
+      // Fix 2: Ensure messages are properly formatted for ModelScope
+      enhancedMessages = enhancedMessages.map(msg => {
+        if (msg.role === 'user') {
+          if (Array.isArray(msg.content)) {
+            // Convert array to string
+            const textContent = msg.content
+              .filter(part => part.type === 'text')
+              .map(part => part.text)
+              .join('\n');
+            return { ...msg, content: textContent };
+          } else if (typeof msg.content === 'string') {
+            // Clean up content for ModelScope - remove special characters that might cause issues
+            const cleanedContent = msg.content
+              .replace(/"""/g, '"')  // Replace triple quotes
+              .replace(/`/g, '')     // Remove backticks
+              .trim();
+            return { ...msg, content: cleanedContent };
+          }
+        }
+        return msg;
+      });
+    }
+
+    // Add additional logging for ModelScope debugging
+    if (isModelScope) {
+      console.log('[ModelScope] Final messages structure:', JSON.stringify(enhancedMessages, null, 2));
+    }
 
     const result = streamText({
       model,
       system: systemMessage,
       messages: enhancedMessages,
       ...(providerOptions && { providerOptions }),
+      // Reduce temperature for more consistent responses from ModelScope
+      ...(isModelScope && { temperature: 0.1 }),
       tools: {
         // Client-side tool that will be executed on the client
         display_diagram: {
