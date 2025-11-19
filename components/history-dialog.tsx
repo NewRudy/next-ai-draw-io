@@ -9,7 +9,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import Image from "next/image";
 import { useDiagram } from "@/contexts/diagram-context";
 
 interface HistoryDialogProps {
@@ -21,7 +20,7 @@ export function HistoryDialog({
     showHistory,
     onToggleHistory,
 }: HistoryDialogProps) {
-    const { loadDiagram: onDisplayChart, diagramHistory } = useDiagram();
+    const { loadDiagram: onDisplayChart, diagramHistory, clearHistory } = useDiagram();
 
     return (
         <Dialog open={showHistory} onOpenChange={onToggleHistory}>
@@ -52,13 +51,15 @@ export function HistoryDialog({
                                 }}
                             >
                                 <div className="aspect-video bg-white rounded overflow-hidden flex items-center justify-center">
-                                    <Image
-                                        src={item.svg}
-                                        alt={`Diagram version ${index + 1}`}
-                                        width={200}
-                                        height={100}
-                                        className="object-contain w-full h-full p-1"
-                                    />
+                                    {item.svg.startsWith('data:') ? (
+                                        <img
+                                            src={item.svg}
+                                            alt={`Diagram version ${index + 1}`}
+                                            className="object-contain w-full h-full p-1"
+                                        />
+                                    ) : (
+                                        <div className="text-xs text-gray-400">No preview</div>
+                                    )}
                                 </div>
                                 <div className="text-xs text-center mt-1 text-gray-500">
                                     Version {index + 1}
@@ -69,6 +70,16 @@ export function HistoryDialog({
                 )}
 
                 <DialogFooter>
+                    <Button
+                        variant="destructive"
+                        onClick={() => {
+                            if (confirm("Are you sure you want to clear all history?")) {
+                                clearHistory();
+                            }
+                        }}
+                    >
+                        Clear History
+                    </Button>
                     <Button
                         variant="outline"
                         onClick={() => onToggleHistory(false)}

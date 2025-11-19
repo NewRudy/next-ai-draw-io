@@ -20,6 +20,9 @@ import { ChatMessageDisplay } from "./chat-message-display";
 import { useDiagram } from "@/contexts/diagram-context";
 import { replaceNodes, formatXML } from "@/lib/utils";
 import { ButtonWithTooltip } from "@/components/button-with-tooltip";
+import { ExportMenu } from "@/components/export-menu";
+import { TemplateDialog } from "@/components/template-dialog";
+import { LayoutTemplate } from "lucide-react";
 
 interface ChatPanelProps {
     isVisible: boolean;
@@ -54,6 +57,7 @@ export default function ChatPanel({ isVisible, onToggleVisibility }: ChatPanelPr
     const [files, setFiles] = useState<File[]>([]);
     // Add state for showing the history dialog
     const [showHistory, setShowHistory] = useState(false);
+    const [showTemplates, setShowTemplates] = useState(false);
 
     // Convert File[] to FileList for experimental_attachments
     const createFileList = (files: File[]): FileList => {
@@ -235,6 +239,15 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 </div>
                 <div className="flex items-center gap-2">
                     <ButtonWithTooltip
+                        tooltipContent="Templates"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setShowTemplates(true)}
+                    >
+                        <LayoutTemplate className="h-5 w-5" />
+                    </ButtonWithTooltip>
+                    <ExportMenu />
+                    <ButtonWithTooltip
                         tooltipContent="Hide chat panel (Ctrl+B)"
                         variant="ghost"
                         size="icon"
@@ -252,6 +265,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     </a>
                 </div>
             </CardHeader>
+            <TemplateDialog open={showTemplates} onOpenChange={setShowTemplates} />
             <CardContent className="flex-grow overflow-hidden px-2">
                 <ChatMessageDisplay
                     messages={messages}
@@ -277,6 +291,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     onToggleHistory={setShowHistory}
                 />
             </CardFooter>
-        </Card>
+        </Card >
     );
 }
