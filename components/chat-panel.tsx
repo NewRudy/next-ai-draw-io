@@ -1,7 +1,6 @@
 "use client";
 
-import type React from "react";
-import { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { FaGithub } from "react-icons/fa";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import Link from "next/link";
@@ -29,7 +28,8 @@ interface ChatPanelProps {
     onToggleVisibility: () => void;
 }
 
-export default function ChatPanel({ isVisible, onToggleVisibility }: ChatPanelProps) {
+export default React.forwardRef<{ setInput: (text: string) => void }, ChatPanelProps>(
+    function ChatPanel({ isVisible, onToggleVisibility }, ref) {
     const {
         loadDiagram: onDisplayChart,
         handleExport: onExport,
@@ -68,6 +68,13 @@ export default function ChatPanel({ isVisible, onToggleVisibility }: ChatPanelPr
 
     // Add state for input management
     const [input, setInput] = useState("");
+
+    // Expose setInput via ref
+    React.useImperativeHandle(ref, () => ({
+        setInput: (text: string) => {
+            setInput(text);
+        },
+    }));
 
     // Remove the currentXmlRef and related useEffect
     const { messages, sendMessage, addToolResult, status, error, setMessages } =
@@ -293,4 +300,4 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             </CardFooter>
         </Card >
     );
-}
+});

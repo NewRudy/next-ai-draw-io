@@ -7,6 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import ExamplePanel from "./chat-example-panel";
 import { UIMessage } from "ai";
 import { convertToLegalXml, replaceNodes } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Eye } from "lucide-react";
 
 import { useDiagram } from "@/contexts/diagram-context";
 
@@ -25,8 +27,6 @@ export function ChatMessageDisplay({
 }: ChatMessageDisplayProps) {
     const { chartXML, loadDiagram: onDisplayChart } = useDiagram();
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const previousXML = useRef<string>("");
-    const processedToolCalls = useRef<Set<string>>(new Set());
     const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>(
         {}
     );
@@ -34,11 +34,8 @@ export function ChatMessageDisplay({
         (xml: string) => {
             const currentXml = xml || "";
             const convertedXml = convertToLegalXml(currentXml);
-            if (convertedXml !== previousXML.current) {
-                previousXML.current = convertedXml;
-                const replacedXML = replaceNodes(chartXML, convertedXml);
-                onDisplayChart(replacedXML);
-            }
+            const replacedXML = replaceNodes(chartXML, convertedXml);
+            onDisplayChart(replacedXML);
         },
         [chartXML, onDisplayChart]
     );
@@ -49,48 +46,24 @@ export function ChatMessageDisplay({
         }
     }, [messages]);
 
-    // Handle tool invocations and update diagram when needed
+    // Auto-collapse args when diagrams are generated
     useEffect(() => {
         messages.forEach((message) => {
             if (message.parts) {
                 message.parts.forEach((part: any) => {
                     if (part.type?.startsWith("tool-")) {
                         const { toolCallId, state } = part;
-
-                        // Auto-collapse args when diagrams are generated
                         if (state === "output-available") {
                             setExpandedTools((prev) => ({
                                 ...prev,
                                 [toolCallId]: false,
                             }));
                         }
-
-                        // Handle diagram updates for display_diagram tool
-                        if (
-                            part.type === "tool-display_diagram" &&
-                            part.input?.xml
-                        ) {
-                            // For streaming input, always update to show streaming
-                            if (
-                                state === "input-streaming" ||
-                                state === "input-available"
-                            ) {
-                                handleDisplayChart(part.input.xml);
-                            }
-                            // For completed calls, only update if not processed yet
-                            else if (
-                                state === "output-available" &&
-                                !processedToolCalls.current.has(toolCallId)
-                            ) {
-                                handleDisplayChart(part.input.xml);
-                                processedToolCalls.current.add(toolCallId);
-                            }
-                        }
                     }
                 });
             }
         });
-    }, [messages, handleDisplayChart]);
+    }, [messages]);
 
     const renderToolPart = (part: any) => {
         const callId = part.toolCallId;
@@ -133,12 +106,27 @@ export function ChatMessageDisplay({
                         {state === "input-streaming" ? (
                             <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                         ) : state === "output-available" ? (
-                            <div className="text-green-600">
-                                {output || (toolName === "display_diagram"
-                                    ? "Diagram generated"
-                                    : toolName === "edit_diagram"
-                                    ? "Diagram edited"
-                                    : "Tool executed")}
+                            <div className="flex items-center gap-2">
+                                <div className="text-green-600">
+                                    {output || (toolName === "display_diagram"
+                                        ? "Diagram generated"
+                                        : toolName === "edit_diagram"
+                                        ? "Diagram edited"
+                                        : "Tool executed")}
+                                </div>
+                                {toolName === "display_diagram" && input?.xml && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                            handleDisplayChart(input.xml);
+                                        }}
+                                        className="h-7 text-xs"
+                                    >
+                                        <Eye className="h-3 w-3 mr-1" />
+                                        可视化
+                                    </Button>
+                                )}
                             </div>
                         ) : state === "output-error" ? (
                             <div className="text-red-600">

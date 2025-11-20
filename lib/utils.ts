@@ -306,6 +306,73 @@ export function replaceXMLParts(
   return result;
 }
 
+/**
+ * Extract all mxCell nodes from a Draw.io XML string
+ * @param xmlString - The Draw.io XML string
+ * @returns Array of node XML strings (excluding base cells with id="0" and id="1")
+ */
+export function extractNodes(xmlString: string): string[] {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlString, "text/xml");
+    const root = doc.querySelector("mxGraphModel > root");
+    
+    if (!root) {
+      return [];
+    }
+
+    const nodes: string[] = [];
+    const serializer = new XMLSerializer();
+    
+    // Get all mxCell elements
+    const cells = root.querySelectorAll("mxCell");
+    
+    cells.forEach((cell) => {
+      const cellId = cell.getAttribute("id");
+      // Skip base cells (id="0" and id="1")
+      if (cellId !== "0" && cellId !== "1") {
+        // Serialize the cell with its children
+        const cellXML = serializer.serializeToString(cell);
+        nodes.push(cellXML);
+      }
+    });
+
+    return nodes;
+  } catch (error) {
+    console.error("Error extracting nodes:", error);
+    return [];
+  }
+}
+
+/**
+ * Extract a specific node by ID from XML
+ * @param xmlString - The Draw.io XML string
+ * @param nodeId - The ID of the node to extract
+ * @returns The XML string of the node, or null if not found
+ */
+export function extractNodeById(xmlString: string, nodeId: string): string | null {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlString, "text/xml");
+    const root = doc.querySelector("mxGraphModel > root");
+    
+    if (!root) {
+      return null;
+    }
+
+    const cell = root.querySelector(`mxCell[id="${nodeId}"]`);
+    if (!cell) {
+      return null;
+    }
+
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(cell);
+  } catch (error) {
+    console.error("Error extracting node by ID:", error);
+    return null;
+  }
+}
+
 export function extractDiagramXML(xml_svg_string: string): string {
   try {
     // 1. Parse the SVG string (using built-in DOMParser in a browser-like environment)

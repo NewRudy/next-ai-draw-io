@@ -2,12 +2,20 @@
 
 import React, { createContext, useContext, useRef, useState, useEffect } from "react";
 import type { DrawIoEmbedRef } from "react-drawio";
-import { extractDiagramXML } from "../lib/utils";
+import { extractDiagramXML, extractNodes } from "../lib/utils";
+
+interface SavedNode {
+    id: string;
+    name: string;
+    xml: string;
+    savedAt: string;
+}
 
 interface DiagramContextType {
     chartXML: string;
     latestSvg: string;
     diagramHistory: { svg: string; xml: string }[];
+    savedNodes: SavedNode[];
     loadDiagram: (chart: string) => void;
     handleExport: (format?: "xml" | "png" | "svg") => void;
     resolverRef: React.Ref<((value: string) => void) | null>;
@@ -15,6 +23,12 @@ interface DiagramContextType {
     handleDiagramExport: (data: any) => void;
     clearDiagram: () => void;
     clearHistory: () => void;
+    saveNodes: () => void;
+    deleteNode: (nodeId: string) => void;
+    deleteNodeFromDiagram: (nodeId: string) => void;
+    getSelectedNodeXml: () => Promise<string | null>;
+    addNodeToChat: (nodeXml: string) => void;
+    setAddNodeToChatCallback: (callback: (nodeXml: string) => void) => void;
 }
 
 const DiagramContext = createContext<DiagramContextType | undefined>(undefined);
@@ -25,6 +39,7 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
     const [diagramHistory, setDiagramHistory] = useState<
         { svg: string; xml: string }[]
     >([]);
+    const [savedNodes, setSavedNodes] = useState<SavedNode[]>([]);
     const drawioRef = useRef<DrawIoEmbedRef | null>(null);
     const resolverRef = useRef<((value: string) => void) | null>(null);
 
@@ -42,10 +57,27 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
+    // Load saved nodes from localStorage on mount
+    useEffect(() => {
+        const savedNodesData = localStorage.getItem("savedNodes");
+        if (savedNodesData) {
+            try {
+                setSavedNodes(JSON.parse(savedNodesData));
+            } catch (e) {
+                console.error("Failed to parse saved nodes", e);
+            }
+        }
+    }, []);
+
     // Save history to localStorage whenever it changes
     useEffect(() => {
         localStorage.setItem("diagramHistory", JSON.stringify(diagramHistory));
     }, [diagramHistory]);
+
+    // Save nodes to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem("savedNodes", JSON.stringify(savedNodes));
+    }, [savedNodes]);
 
     const handleExport = (format: "xml" | "png" | "svg" = "xml") => {
         if (drawioRef.current) {
@@ -138,12 +170,136 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("diagramHistory");
     };
 
+    const saveNodes = () => {
+        if (!chartXML) {
+            alert("没有可保存的图表");
+            return;
+        }
+
+        const nodes = extractNodes(chartXML);
+        if (nodes.length === 0) {
+            alert("图表中没有可保存的节点");
+            return;
+        }
+
+        const newNodes: SavedNode[] = nodes.map((nodeXml, index) => {
+            // Try to extract node name from value attribute or use default
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(nodeXml, "text/xml");
+            const cell = doc.querySelector("mxCell");
+            const value = cell?.getAttribute("value") || `节点 ${index + 1}`;
+            const nodeId = cell?.getAttribute("id") || `node-${Date.now()}-${index}`;
+
+            return {
+                id: nodeId,
+                name: value.length > 30 ? value.substring(0, 30) + "..." : value,
+                xml: nodeXml,
+                savedAt: new Date().toISOString(),
+            };
+        });
+
+        setSavedNodes((prev) => {
+            // Merge with existing nodes, avoiding duplicates by id
+            const existingIds = new Set(prev.map((n) => n.id));
+            const uniqueNewNodes = newNodes.filter((n) => !existingIds.has(n.id));
+            return [...prev, ...uniqueNewNodes];
+        });
+
+        alert(`成功保存 ${newNodes.length} 个节点`);
+    };
+
+    const deleteNode = (nodeId: string) => {
+        setSavedNodes((prev) => prev.filter((node) => node.id !== nodeId));
+    };
+
+    // Delete a node from the current diagram by its ID
+    const deleteNodeFromDiagram = (nodeId: string) => {
+        if (!chartXML) {
+            return;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(chartXML, "text/xml");
+            const root = doc.querySelector("mxGraphModel > root");
+            
+            if (!root) {
+                return;
+            }
+
+            // Find and remove the node with the given ID
+            const cells = root.querySelectorAll("mxCell");
+            cells.forEach((cell) => {
+                if (cell.getAttribute("id") === nodeId) {
+                    cell.remove();
+                }
+            });
+
+            // Convert back to XML string
+            const serializer = new XMLSerializer();
+            const updatedXML = serializer.serializeToString(doc);
+            
+            // Reload the diagram with updated XML
+            loadDiagram(updatedXML);
+            setChartXML(updatedXML);
+        } catch (error) {
+            console.error("Error deleting node from diagram:", error);
+        }
+    };
+
+    // Get the XML of the currently selected node
+    const getSelectedNodeXml = async (): Promise<string | null> => {
+        if (!drawioRef.current) {
+            return null;
+        }
+
+        try {
+            // Export current diagram to get XML
+            const xmlPromise = new Promise<string>((resolve) => {
+                if (resolverRef && "current" in resolverRef) {
+                    resolverRef.current = resolve;
+                }
+                handleExport("xml");
+            });
+
+            const currentXml = await Promise.race([
+                xmlPromise,
+                new Promise<string>((_, reject) =>
+                    setTimeout(() => reject(new Error("Timeout")), 5000)
+                ),
+            ]);
+
+            // Try to get selected cells from draw.io
+            // Since we can't directly access draw.io's API, we'll need to use postMessage
+            // For now, we'll return the full XML and let the caller extract the node
+            return currentXml;
+        } catch (error) {
+            console.error("Error getting selected node:", error);
+            return null;
+        }
+    };
+
+    // Add node to chat - this will be handled by setting a callback
+    const addNodeToChatCallbackRef = useRef<((nodeXml: string) => void) | null>(null);
+    
+    const addNodeToChat = (nodeXml: string) => {
+        if (addNodeToChatCallbackRef.current) {
+            addNodeToChatCallbackRef.current(nodeXml);
+        }
+    };
+
+    // Expose a way to set the callback
+    const setAddNodeToChatCallback = (callback: (nodeXml: string) => void) => {
+        addNodeToChatCallbackRef.current = callback;
+    };
+
     return (
         <DiagramContext.Provider
             value={{
                 chartXML,
                 latestSvg,
                 diagramHistory,
+                savedNodes,
                 loadDiagram,
                 handleExport,
                 resolverRef,
@@ -151,7 +307,13 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
                 handleDiagramExport,
                 clearDiagram,
                 clearHistory,
-            }}
+                saveNodes,
+                deleteNode,
+                deleteNodeFromDiagram,
+                getSelectedNodeXml,
+                addNodeToChat,
+                setAddNodeToChatCallback,
+            } as DiagramContextType}
         >
             {children}
         </DiagramContext.Provider>
