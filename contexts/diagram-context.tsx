@@ -15,6 +15,7 @@ interface DiagramContextType {
     handleDiagramExport: (data: any) => void;
     clearDiagram: () => void;
     clearHistory: () => void;
+    deleteHistoryItem: (index: number) => void;
 }
 
 const DiagramContext = createContext<DiagramContextType | undefined>(undefined);
@@ -138,6 +139,13 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("diagramHistory");
     };
 
+    const deleteHistoryItem = (index: number) => {
+        setDiagramHistory((prev) => {
+            const newHistory = prev.filter((_, i) => i !== index);
+            return newHistory;
+        });
+    };
+
     return (
         <DiagramContext.Provider
             value={{
@@ -151,6 +159,7 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
                 handleDiagramExport,
                 clearDiagram,
                 clearHistory,
+                deleteHistoryItem,
             }}
         >
             {children}
