@@ -17,13 +17,16 @@ export default function Home() {
         setAddNodeToChatCallback,
     } = useDiagram();
     const [isMobile, setIsMobile] = useState(false);
+    const [mounted, setMounted] = useState(false);
     const [isChatVisible, setIsChatVisible] = useState(true);
     const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const diagramContainerRef = useRef<HTMLDivElement>(null);
     const chatInputRef = useRef<{ setInput: (text: string) => void } | null>(null);
 
+    // Ensure hydration safety by only checking mobile after mount
     useEffect(() => {
+        setMounted(true);
         const checkMobile = () => {
             setIsMobile(window.innerWidth < 768);
         };
@@ -198,8 +201,8 @@ export default function Home() {
 
     return (
         <div className="flex h-screen bg-gray-100 relative">
-            {/* Mobile warning overlay - keeps components mounted */}
-            {isMobile && (
+            {/* Mobile warning overlay - only show after mount to prevent hydration mismatch */}
+            {mounted && isMobile && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-gray-100">
                     <div className="text-center p-8">
                         <h1 className="text-2xl font-semibold text-gray-800">

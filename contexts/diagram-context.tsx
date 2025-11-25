@@ -23,6 +23,7 @@ interface DiagramContextType {
     handleDiagramExport: (data: any) => void;
     clearDiagram: () => void;
     clearHistory: () => void;
+    deleteHistoryItem: (index: number) => void;
     saveNodes: () => void;
     deleteNode: (nodeId: string) => void;
     deleteNodeFromDiagram: (nodeId: string) => void;
@@ -170,6 +171,13 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("diagramHistory");
     };
 
+    const deleteHistoryItem = (index: number) => {
+        setDiagramHistory((prev) => {
+            const newHistory = prev.filter((_, i) => i !== index);
+            return newHistory;
+        });
+    };
+
     const saveNodes = () => {
         if (!chartXML) {
             alert("没有可保存的图表");
@@ -307,6 +315,7 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
                 handleDiagramExport,
                 clearDiagram,
                 clearHistory,
+                deleteHistoryItem,
                 saveNodes,
                 deleteNode,
                 deleteNodeFromDiagram,
