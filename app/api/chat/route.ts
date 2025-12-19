@@ -258,6 +258,26 @@ IMPORTANT: Keep edits concise:
       }
 
       if (error instanceof Error) {
+        // Check for ModelScope-specific errors
+        const errorMessage = error.message;
+        const errorString = JSON.stringify(error);
+        
+        // Detect "has no provider supported" error from ModelScope
+        if (errorString.includes('has no provider supported') || 
+            errorMessage.includes('has no provider supported')) {
+          const modelId = process.env.AI_MODEL || 'unknown';
+          return `模型 ${modelId} 在魔塔社区不被支持。\n\n` +
+                 `可能的原因：\n` +
+                 `1. 模型 ID 不正确或该模型暂不可用\n` +
+                 `2. API Token 权限不足，无法访问该模型\n` +
+                 `3. 模型需要付费或特殊权限\n\n` +
+                 `建议：\n` +
+                 `- 访问 https://modelscope.cn 查看可用的模型列表\n` +
+                 `- 尝试其他模型，如：ZhipuAI/GLM-4.5、Qwen/Qwen2.5-72B-Instruct\n` +
+                 `- 检查您的 ModelScope Token 是否有访问该模型的权限\n` +
+                 `- 确认模型 ID 格式正确（例如：ZhipuAI/GLM-4.6）`;
+        }
+        
         return error.message;
       }
 

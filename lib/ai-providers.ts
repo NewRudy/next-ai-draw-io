@@ -35,7 +35,7 @@ const ANTHROPIC_BETA_OPTIONS = {
 function validateProviderCredentials(provider: ProviderName): void {
   const requiredEnvVars: Record<ProviderName, string | null> = {
     bedrock: 'AWS_ACCESS_KEY_ID',
-    openai: 'OPENAI_API_KEY',
+    openai: null, // OPENAI_API_KEY or MODELSCOPE_TOKEN (checked separately for custom baseURL)
     anthropic: 'ANTHROPIC_API_KEY',
     google: 'GOOGLE_GENERATIVE_AI_API_KEY',
     azure: 'AZURE_API_KEY',
@@ -60,7 +60,8 @@ function validateProviderCredentials(provider: ProviderName): void {
  * - AI_MODEL: The model ID/name for the selected provider
  *
  * Provider-specific env vars:
- * - OPENAI_API_KEY: OpenAI API key
+ * - OPENAI_API_KEY: OpenAI API key (or use MODELSCOPE_TOKEN for ModelScope)
+ * - MODELSCOPE_TOKEN: ModelScope Token (ms-*) for ModelScope API (optional, takes precedence over OPENAI_API_KEY)
  * - OPENAI_BASE_URL: Custom base URL for OpenAI-compatible APIs (optional, e.g., ModelScope)
  * - ANTHROPIC_API_KEY: Anthropic API key
  * - GOOGLE_GENERATIVE_AI_API_KEY: Google API key
@@ -100,12 +101,50 @@ export function getAIModel(): ModelConfig {
     case 'openai':
       // Support custom baseURL for OpenAI-compatible APIs (e.g., ModelScope)
       if (process.env.OPENAI_BASE_URL) {
+        // For ModelScope, use ModelScope Token (ms-*) if provided, otherwise fall back to OPENAI_API_KEY
+        let apiKey = process.env.MODELSCOPE_TOKEN || process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new Error(
+            'Either MODELSCOPE_TOKEN or OPENAI_API_KEY is required when using OPENAI_BASE_URL. ' +
+            'For ModelScope, use MODELSCOPE_TOKEN with format: ms-xxxxx'
+          );
+        }
+
+        // Check if using ModelScope API
+        const isModelScope = process.env.OPENAI_BASE_URL.includes('modelscope');
+
+        if (isModelScope) {
+          // Validate ModelScope Token format
+          if (!apiKey.startsWith('ms-')) {
+            console.warn(
+              '[ModelScope] Warning: API key does not start with "ms-". ' +
+              'ModelScope requires a ModelScope Token (format: ms-xxxxx). ' +
+              'Please set MODELSCOPE_TOKEN environment variable.'
+            );
+          }
+
+          // Log ModelScope-specific information
+          console.log(`[ModelScope] Base URL: ${process.env.OPENAI_BASE_URL}`);
+          console.log(`[ModelScope] Model ID: ${modelId}`);
+          console.log(`[ModelScope] Token format: ${apiKey.startsWith('ms-') ? 'Valid ModelScope Token' : 'Non-standard format'}`);
+
+          // Common ModelScope model alternatives if the requested model fails
+          if (modelId.includes('GLM-4.6')) {
+            console.warn(
+              '[ModelScope] Note: If GLM-4.6 is not supported, try alternative models: ' +
+              'ZhipuAI/GLM-4.5, Qwen/Qwen2.5-72B-Instruct, or check ModelScope website for available models.'
+            );
+          }
+        }
+
+        // ModelScope API expects the token as-is (with ms- prefix)
         const customOpenAI = createOpenAI({
           baseURL: process.env.OPENAI_BASE_URL,
-          apiKey: process.env.OPENAI_API_KEY,
-          compatibility: 'compatible',
+          apiKey: apiKey,
         });
         console.log(`[AI Provider] Using custom OpenAI baseURL: ${process.env.OPENAI_BASE_URL}`);
+        console.log(`[AI Provider] Using API key format: ${apiKey.startsWith('ms-') ? 'ModelScope Token' : 'OpenAI Key'}`);
+        console.log(`[AI Provider] Model ID: ${modelId}`);
         model = customOpenAI.chat(modelId);
       } else {
         model = openai(modelId);
